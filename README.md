@@ -1,4 +1,4 @@
-# sos_scan
+# OpenDAO $SOS Scan
 Script to scran SOS OpenDAO claims
 
 
