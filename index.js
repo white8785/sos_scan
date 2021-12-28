@@ -11,8 +11,8 @@ const OPENSEA_ADDRESS = "0x7Be8076f4EA4A4AD08075C2508e481d6C946D12b";
 const SOS_START_BLOCK = 13860522;
 const OPENSEA_START_BLOCK = 5774644;
 
-const csvWriter = createCsvWriter({
-  path: "sos_scan.csv",
+const csvWriterBad = createCsvWriter({
+  path: "sos_bad_claims.csv",
   header: [
     {id: "wallet", title: "Wallet"},
     {id: "claimed", title: "Claimed"},
@@ -21,20 +21,34 @@ const csvWriter = createCsvWriter({
   append: true,
 })
 
+const csvWriterAll = createCsvWriter({
+  path: "sos_all_claims.csv",
+  header: [
+    {id: "wallet", title: "Wallet"},
+    {id: "claimed", title: "Claimed"},
+    {id: "txHash", title: "Tx Hash"},
+    {id: "numberBuy", title: "# OS Purchases"},
+    {id: "totalETHBuy", title: "Total ETH (Purchase)"},
+    {id: "numberSell", title: "# OS Sales"},
+    {id: "totalETHSell", title: "Total ETH (Sales)"},
+  ],
+  append: true,
+})
+
 const main = async () => {
   const provider = new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI);
   const contract = getSOSContract(provider);
 
-  const endBlock = await provider.getBlockNumber();
+  // const endBlock = await provider.getBlockNumber();
+  const endBlock = SOS_START_BLOCK + 5550;
   const interval = 5000;
 
   for (let i = SOS_START_BLOCK; i < endBlock; i += interval) {
-    const _startBlock = i;
-    const _endBlock = Math.min(endBlock, i + 4999);
-    console.log(`------ Scanning Block ${_startBlock} to ${_endBlock} ----------`);
-    const claims = await getClaims(contract, _startBlock, _endBlock);
+    const _endBlock = Math.min(endBlock, i + interval);
+    console.log(`------ Scanning Block ${i} to ${_endBlock} ----------`);
+    const claims = await getClaims(contract, i, _endBlock);
     console.log(`Found ${claims.length} claims`);
-    await filterZeroOpenSeaWallet(provider, claims);
+    await parseOpenseaTx(provider, claims);
   }
 }
 
@@ -50,45 +64,55 @@ const getClaims = async (contract, startBlock, endBlock) => {
 }
 
 const filterOSEvents = async (opensea, filter) => {
-  const interval = 100000;
+  const interval = 2000;
+  let allEvents = []
   for (let i = SOS_START_BLOCK; i > OPENSEA_START_BLOCK; i -= interval) {
     const startBlock = Math.max(i, OPENSEA_START_BLOCK);
     const endBlock = i + interval;
     const events = await opensea.queryFilter(filter, startBlock, endBlock);
-    if (events.length > 0) {
-      return true;
-    }
+    allEvents = [...allEvents, events];
   }
 
-  return false;
+  return allEvents;
 }
 
-const filterZeroOpenSeaWallet = async (provider, claimEvents) => {
+const parseOpenseaTx = async (provider, claimEvents) => {
   const opensea = new ethers.Contract(OPENSEA_ADDRESS, OPENSEA_ABI, provider);
+  let badData = []
+  let allData = []
 
   for (const event of claimEvents) {
     const wallet = event.args.to;
     const buyerFilter = opensea.filters.OrdersMatched(null, null, null, wallet)
-    const hasBuyEvents = await filterOSEvents(opensea, buyerFilter);
-    if (!hasBuyEvents) {
-      const sellerFilter = opensea.filters.OrdersMatched(null, null, wallet)
-      const hasSellEvents = await filterOSEvents(opensea, sellerFilter);
-      if (!hasSellEvents) {
-        console.log(`!!!!!!!!!!!!!!!!!!!!!!!!!!! No OS transaction ${wallet} !!!!!!!!!!!!!!!!!!!!!!`);
-        const amountClaimed = formatEther(event.args.value);
-        const maliciousData = [{
-          wallet: wallet,
-          claimed: amountClaimed,
-          txHash: event.transactionHash,
-        }]
-        csvWriter.writeRecords(maliciousData)
-      } else {
-        console.log(`${wallet}: has sales`);
-      }
+    const buyEvents = await filterOSEvents(opensea, buyerFilter);
+
+    const sellerFilter = opensea.filters.OrdersMatched(null, null, wallet)
+    const sellEvents = await filterOSEvents(opensea, sellerFilter);
+    if (buyEvents.length == 0 && sellEvents.length == 0) {
+      console.log(`!!!!!!!!!!!!!!!!!!!!!!!!!!! No OS transaction ${wallet} !!!!!!!!!!!!!!!!!!!!!!`);
+      const amountClaimed = formatEther(event.args.value);
+      badData.append({
+        wallet: wallet,
+        claimed: amountClaimed,
+        txHash: event.transactionHash,
+      });
     } else {
-      console.log(`${wallet}: has buys`);
-    }
-  }
+      for (const event in buyEvents) {
+        console.log(event);
+
+      };
+      for (const event in sellEvents) {
+        console.log(event);
+      };
+    };
+  };
+
+  if (badData) {
+    csvWriterBad.writeRecords(maliciousData);
+  };
+  if (allData) {
+    csvWriterAll.writeRecords(allData);
+  };
 }
 
 main()
