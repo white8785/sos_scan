@@ -51,7 +51,6 @@ const main = async () => {
     tasks.push(task);
   }
   await Promise.all(tasks);
-  // const foo = tasks.map(t => await t);
 }
 
 const getSOSContract = (provider) => {
@@ -130,10 +129,10 @@ const parseOpenseaTx = async (provider, claimEvents) => {
     };
   };
 
-  if (badData) {
+  if (badData.length > 0) {
     await csvWriterBad.writeRecords(badData);
   };
-  if (allData) {
+  if (allData.length > 0) {
     await csvWriterAll.writeRecords(allData);
   };
 }
