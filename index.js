@@ -49,18 +49,19 @@ const main = async () => {
 
   for (let i = SOS_START_BLOCK; i < endBlock; i += interval) {
     const _endBlock = Math.min(endBlock, i + interval);
-    const task = parseClaims;
-    const doTask = () => {
-      task(opensea, contract, i + 1, _endBlock)
-        .then(() => {})
-        .catch(async (error) => {
-          console.log("error occured:", error)
-          await sleep(Math.random() * 3000)
-          doTask()
-        })
-    };
+    await parseClaims(opensea, contract, i + 1, _endBlock);
+    // const task = parseClaims;
+    // const doTask = () => {
+    //   task(opensea, contract, i + 1, _endBlock)
+    //     .then(() => {})
+    //     .catch(async (error) => {
+    //       console.log("error occured:", error)
+    //       await sleep(Math.random() * 3000)
+    //       doTask()
+    //     })
+    // };
 
-    doTask()
+    // doTask()
   }
 }
 
@@ -83,23 +84,7 @@ const parseClaims = async (opensea, contract, startBlock, endBlock) => {
   await parseOpenseaTx(opensea, claimEvents, startBlock);
 }
 
-// const filterOSEvents = async (opensea, filter) => {
-//   const interval = 10000;
-//   let allEvents = []
-//   for (let i = OPENSEA_START_BLOCK; i < SNAPSHOT_BLOCK; i += interval) {
-//     const startBlock = i;
-//     const endBlock = Math.min(i + interval, SNAPSHOT_BLOCK);
-//     console.log(`Scanning filterOSEvents ${startBlock} to ${endBlock}`);
-//     const events = await opensea.queryFilter(filter, startBlock, endBlock);
-//     if (events.length > 0) {
-//       allEvents = [...allEvents, events];
-//     }
-//   }
-//   return allEvents;
-// }
-
-
-const filterOSEvents = async (opensea, filter, full = false) => {
+const filterOSEvents = async (opensea, filter, full) => {
   if (full) {
     const events = await opensea.queryFilter(filter, OPENSEA_START_BLOCK, SNAPSHOT_BLOCK);
     if (events.length > 0) {
@@ -108,7 +93,7 @@ const filterOSEvents = async (opensea, filter, full = false) => {
     return false;
   }
 
-  const interval = 2000;
+  const interval = 1000;
   for (let i = SNAPSHOT_BLOCK; i > OPENSEA_START_BLOCK; i -= interval) {
     const startBlock = Math.max(OPENSEA_START_BLOCK, i - interval);
     const endBlock = i;
@@ -121,16 +106,13 @@ const filterOSEvents = async (opensea, filter, full = false) => {
 }
 
 const parseOpenseaTx = async (opensea, claimEvents, startBlock) => {
-  let allTasks = []
-
   for (const event of claimEvents) {
-    const task = _parseOpenSeaTx;
-
+    const task =  _parseOpenSeaTx;
     const doTask = () => {
       task(event, opensea, startBlock)
         .then(() => {})
         .catch(async (error) => {
-          console.log("error occured:", error)
+          console.log("parseOpenseaTx error occured:", error)
           await sleep(Math.random() * 3000)
           doTask()
         })
@@ -148,7 +130,7 @@ const _parseOpenSeaTx = async (event, opensea, startBlock) => {
   const hasSellEvents = await filterOSEvents(opensea, sellerFilter, false);
 
   if (hasSellEvents) {
-    console.log(`[${startBlock}]: ${wallet} has sells`)
+    console.log(`[${startBlock}] ${wallet} has sell`)
     return;
   }
 
@@ -219,6 +201,23 @@ const _parseOpenSeaTx = async (event, opensea, startBlock) => {
 //     await csvWriterAll.writeRecords(allData);
 //   };
 // }
+//
+// const filterOSEvents = async (opensea, filter) => {
+//   const interval = 10000;
+//   let allEvents = []
+//   for (let i = OPENSEA_START_BLOCK; i < SNAPSHOT_BLOCK; i += interval) {
+//     const startBlock = i;
+//     const endBlock = Math.min(i + interval, SNAPSHOT_BLOCK);
+//     console.log(`Scanning filterOSEvents ${startBlock} to ${endBlock}`);
+//     const events = await opensea.queryFilter(filter, startBlock, endBlock);
+//     if (events.length > 0) {
+//       allEvents = [...allEvents, events];
+//     }
+//   }
+//   return allEvents;
+// }
+
+
 
 main()
   // .then(text => {
