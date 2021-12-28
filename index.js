@@ -42,13 +42,11 @@ const main = async () => {
     new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI),
     new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI),
     new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI),
-    new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI),
-    new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI),
   ]
   const contract = getSOSContract(providers[0]);
 
   const endBlock = await providers[0].getBlockNumber();
-  const interval = 10;
+  const interval = 100;
 
   let tasks = [];
   let counter = 0;
@@ -59,7 +57,7 @@ const main = async () => {
     tasks.push(task);
 
     counter += 1;
-    if ((counter % 5) == 0) {
+    if ((counter % 3) == 0) {
       await Promise.all(tasks);
       tasks = [];
     }
@@ -79,61 +77,55 @@ const parseClaims = async (provider, contract, startBlock, endBlock) => {
   await parseOpenseaTx(provider, claimEvents);
 }
 
+// const filterOSEvents = async (opensea, filter) => {
+//   const interval = 10000;
+//   let allEvents = []
+//   for (let i = OPENSEA_START_BLOCK; i < SNAPSHOT_BLOCK; i += interval) {
+//     const startBlock = i;
+//     const endBlock = Math.min(i + interval, SNAPSHOT_BLOCK);
+//     console.log(`Scanning filterOSEvents ${startBlock} to ${endBlock}`);
+//     const events = await opensea.queryFilter(filter, startBlock, endBlock);
+//     if (events.length > 0) {
+//       allEvents = [...allEvents, events];
+//     }
+//   }
+//   return allEvents;
+// }
+
+
 const filterOSEvents = async (opensea, filter) => {
   const interval = 10000;
   let allEvents = []
   for (let i = OPENSEA_START_BLOCK; i < SNAPSHOT_BLOCK; i += interval) {
     const startBlock = i;
     const endBlock = Math.min(i + interval, SNAPSHOT_BLOCK);
-    console.log(`Scanning filterOSEvents ${startBlock} to ${endBlock}`);
     const events = await opensea.queryFilter(filter, startBlock, endBlock);
     if (events.length > 0) {
-      allEvents = [...allEvents, events];
+      return true;
     }
   }
-  return allEvents;
+  return false;
 }
 
 const parseOpenseaTx = async (provider, claimEvents) => {
   const opensea = new ethers.Contract(OPENSEA_ADDRESS, OPENSEA_ABI, provider);
   let badData = []
-  let allData = []
 
   for (const event of claimEvents) {
     const wallet = event.args.to;
     const amountClaimed = formatEther(event.args.value);
 
     const buyerFilter = opensea.filters.OrdersMatched(null, null, null, wallet)
-    const buyEvents = await filterOSEvents(opensea, buyerFilter);
+    const hasBuyEvents = await filterOSEvents(opensea, buyerFilter);
 
     const sellerFilter = opensea.filters.OrdersMatched(null, null, wallet)
-    const sellEvents = await filterOSEvents(opensea, sellerFilter);
-    if (buyEvents.length == 0 && sellEvents.length == 0) {
-      console.log(`!!!!!!!!!!!!!!!!!!!!!!!!!!! No OS transaction ${wallet} !!!!!!!!!!!!!!!!!!!!!!`);
+    const hasSellEvents = await filterOSEvents(opensea, sellerFilter);
+    if (!hasBuyEvents && !hasSellEvents) {
       badData.push({
         wallet: wallet,
         claimed: amountClaimed,
         txHash: event.transactionHash,
       });
-    } else {
-      let totalEthBuy = parseEther("0");
-      let totalEthSell = parseEther("0");
-      for (const event of buyEvents) {
-        totalEthBuy = totalEthBuy.add(event.args.price)
-      };
-      for (const event of sellEvents) {
-        totalEthSell = totalEthSell.add(event.args.price)
-      };
-
-      allData.push({
-        wallet,
-        claimed: amountClaimed,
-        txHash: event.transactionHash,
-        numberBuy: buyEvents.length,
-        totalETHBuy: formatEther(totalEthBuy),
-        numberSell: sellEvents.length,
-        totalETHSell: formatEther(totalEthSell),
-      })
     };
   };
 
@@ -141,11 +133,60 @@ const parseOpenseaTx = async (provider, claimEvents) => {
     console.log(`Writing ${badData.length} bad data rows`);
     await csvWriterBad.writeRecords(badData);
   };
-  if (allData.length > 0) {
-    console.log(`Writing ${allData.length} all data rows`);
-    await csvWriterAll.writeRecords(allData);
-  };
 }
+
+// const parseOpenseaTx = async (provider, claimEvents) => {
+//   const opensea = new ethers.Contract(OPENSEA_ADDRESS, OPENSEA_ABI, provider);
+//   let badData = []
+//   let allData = []
+
+//   for (const event of claimEvents) {
+//     const wallet = event.args.to;
+//     const amountClaimed = formatEther(event.args.value);
+
+//     const buyerFilter = opensea.filters.OrdersMatched(null, null, null, wallet)
+//     const buyEvents = await filterOSEvents(opensea, buyerFilter);
+
+//     const sellerFilter = opensea.filters.OrdersMatched(null, null, wallet)
+//     const sellEvents = await filterOSEvents(opensea, sellerFilter);
+//     if (buyEvents.length == 0 && sellEvents.length == 0) {
+//       console.log(`!!!!!!!!!!!!!!!!!!!!!!!!!!! No OS transaction ${wallet} !!!!!!!!!!!!!!!!!!!!!!`);
+//       badData.push({
+//         wallet: wallet,
+//         claimed: amountClaimed,
+//         txHash: event.transactionHash,
+//       });
+//     } else {
+//       let totalEthBuy = parseEther("0");
+//       let totalEthSell = parseEther("0");
+//       for (const event of buyEvents) {
+//         totalEthBuy = totalEthBuy.add(event.args.price)
+//       };
+//       for (const event of sellEvents) {
+//         totalEthSell = totalEthSell.add(event.args.price)
+//       };
+
+//       allData.push({
+//         wallet,
+//         claimed: amountClaimed,
+//         txHash: event.transactionHash,
+//         numberBuy: buyEvents.length,
+//         totalETHBuy: formatEther(totalEthBuy),
+//         numberSell: sellEvents.length,
+//         totalETHSell: formatEther(totalEthSell),
+//       })
+//     };
+//   };
+
+//   if (badData.length > 0) {
+//     console.log(`Writing ${badData.length} bad data rows`);
+//     await csvWriterBad.writeRecords(badData);
+//   };
+//   if (allData.length > 0) {
+//     console.log(`Writing ${allData.length} all data rows`);
+//     await csvWriterAll.writeRecords(allData);
+//   };
+// }
 
 main()
   .then(text => {
