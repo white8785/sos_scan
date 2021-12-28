@@ -81,14 +81,18 @@ const parseClaims = async (provider, contract, startBlock, endBlock) => {
 
 const filterOSEvents = async (opensea, filter) => {
   try {
+    console.log("Entering filterOSEvents");
     const events = await opensea.queryFilter(filter, null, SNAPSHOT_BLOCK);
+    console.log(`Entering filterOSEvents ${events.length}`);
     return events;
   } catch(error) {
+    console.log(`Error filterOSEvents ${error}`);
     const interval = 2000;
     let allEvents = []
     for (let i = OPENSEA_START_BLOCK; i < SNAPSHOT_BLOCK; i += interval) {
       const startBlock = i;
       const endBlock = Math.min(i + interval, SNAPSHOT_BLOCK);
+      console.log(`Scanning filterOSEvents ${startBlock} to ${endBlock}`);
       const events = await opensea.queryFilter(filter, startBlock, endBlock);
       if (events) {
         allEvents = [...allEvents, events];
