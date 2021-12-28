@@ -41,16 +41,22 @@ const main = async () => {
   const contract = getSOSContract(provider);
 
   const endBlock = await provider.getBlockNumber();
-  const interval = 2000;
+  const interval = 500;
 
   let tasks = [];
+  let counter = 0;
 
   for (let i = SOS_START_BLOCK; i < endBlock; i += interval) {
     const _endBlock = Math.min(endBlock, i + interval);
     const task = parseClaims(provider, contract, i + 1, _endBlock);
     tasks.push(task);
+
+    counter += 1;
+    if ((counter % 10) == 0) {
+      await Promise.all(tasks);
+      tasks = [];
+    }
   }
-  await Promise.all(tasks);
 }
 
 const getSOSContract = (provider) => {
