@@ -43,13 +43,15 @@ const main = async () => {
   const endBlock = await provider.getBlockNumber();
   const interval = 2000;
 
-  for (let i = SOS_START_BLOCK + 1; i < endBlock; i += interval) {
+  let tasks = [];
+
+  for (let i = SOS_START_BLOCK; i < endBlock; i += interval) {
     const _endBlock = Math.min(endBlock, i + interval);
-    console.log(`------ Scanning Block ${i} to ${_endBlock} ----------`);
-    const claims = await getClaims(contract, i, _endBlock);
-    console.log(`Found ${claims.length} claims`);
-    await parseOpenseaTx(provider, claims);
+    const task = parseClaims(provider, contract, i + 1, _endBlock);
+    tasks.push(task);
   }
+  await Promise.all(tasks);
+  // const foo = tasks.map(t => await t);
 }
 
 const getSOSContract = (provider) => {
@@ -57,10 +59,12 @@ const getSOSContract = (provider) => {
   return contract;
 }
 
-const getClaims = async (contract, startBlock, endBlock) => {
+const parseClaims = async (provider, contract, startBlock, endBlock) => {
+  console.log(`------ Scanning Block ${startBlock} to ${endBlock} ----------`);
   const filter = contract.filters.Transfer(ethers.constants.AddressZero);
-  const events = await contract.queryFilter(filter, startBlock, endBlock);
-  return events;
+  const claimEvents = await contract.queryFilter(filter, startBlock, endBlock);
+  console.log(`Found ${claimEvents.length} claims`);
+  await parseOpenseaTx(provider, claimEvents);
 }
 
 const filterOSEvents = async (opensea, filter) => {
