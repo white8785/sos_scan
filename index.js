@@ -43,24 +43,31 @@ const main = async () => {
   const opensea = new ethers.Contract(OPENSEA_ADDRESS, OPENSEA_ABI, provider);
 
   const endBlock = await provider.getBlockNumber();
-  // const endBlock = SOS_START_BLOCK + 2080;
   const interval = 1000;
 
   let allTasks = [];
 
-  for (let i = SOS_START_BLOCK - 1; i < endBlock; i += interval) {
+  for (let i = SOS_START_BLOCK; i < endBlock; i += interval) {
     const _endBlock = Math.min(endBlock, i + interval);
-    const task = parseClaims(opensea, contract, i + 1, _endBlock);
-    allTasks.push(task);
-  }
+    const task = parseClaims;
+    const doTask = () => {
+      task(opensea, contract, i + 1, _endBlock)
+        .then(() => {})
+        .catch(async (error) => {
+          console.log("error occured:", error)
+          await sleep(Math.random() * 3000)
+          doTask()
+        })
+    };
 
-  await Promise.all(allTasks);
+    doTask()
+  }
 }
 
 function sleep(ms) {
-    return new Promise((resolve) => {
-        setTimeout(resolve, ms);
-    });
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 const getSOSContract = (provider) => {
@@ -72,9 +79,8 @@ const parseClaims = async (opensea, contract, startBlock, endBlock) => {
   console.log(`------ Scanning Block ${startBlock} to ${endBlock} ----------`);
   const filter = contract.filters.Transfer(ethers.constants.AddressZero);
   const claimEvents = await contract.queryFilter(filter, startBlock, endBlock);
-  console.log(`Found ${claimEvents.length} claims`);
-  await parseOpenseaTx(opensea, claimEvents);
-  console.log(`------ Done Block ${startBlock} to ${endBlock} ----------`);
+  console.log(`Found ${claimEvents.length} claims (${startBlock} to ${endBlock})`);
+  await parseOpenseaTx(opensea, claimEvents, startBlock);
 }
 
 // const filterOSEvents = async (opensea, filter) => {
@@ -93,8 +99,16 @@ const parseClaims = async (opensea, contract, startBlock, endBlock) => {
 // }
 
 
-const filterOSEvents = async (opensea, filter) => {
-  const interval = 10000;
+const filterOSEvents = async (opensea, filter, full = false) => {
+  if (full) {
+    const events = await opensea.queryFilter(filter, OPENSEA_START_BLOCK, SNAPSHOT_BLOCK);
+    if (events.length > 0) {
+      return true;
+    }
+    return false;
+  }
+
+  const interval = 2000;
   for (let i = SNAPSHOT_BLOCK; i > OPENSEA_START_BLOCK; i -= interval) {
     const startBlock = Math.max(OPENSEA_START_BLOCK, i - interval);
     const endBlock = i;
@@ -106,35 +120,42 @@ const filterOSEvents = async (opensea, filter) => {
   return false;
 }
 
-const parseOpenseaTx = async (opensea, claimEvents) => {
+const parseOpenseaTx = async (opensea, claimEvents, startBlock) => {
   let allTasks = []
 
   for (const event of claimEvents) {
-    const task = _parseOpenSeaTx(event, opensea);
-    allTasks.push(task);
-  };
+    const task = _parseOpenSeaTx;
 
-  await Promise.all(allTasks);
+    const doTask = () => {
+      task(event, opensea, startBlock)
+        .then(() => {})
+        .catch(async (error) => {
+          console.log("error occured:", error)
+          await sleep(Math.random() * 3000)
+          doTask()
+        })
+    };
+
+    doTask();
+  };
 }
 
-const _parseOpenSeaTx = async (event, opensea) => {
+const _parseOpenSeaTx = async (event, opensea, startBlock) => {
   const wallet = event.args.to;
-  console.log(`Scanning OS events for ${wallet}`)
   const amountClaimed = formatEther(event.args.value);
 
   const sellerFilter = opensea.filters.OrdersMatched(null, null, wallet)
-  const hasSellEvents = await filterOSEvents(opensea, sellerFilter);
+  const hasSellEvents = await filterOSEvents(opensea, sellerFilter, false);
 
   if (hasSellEvents) {
-    console.log(`${wallet} has sell`);
+    console.log(`[${startBlock}]: ${wallet} has sells`)
     return;
   }
 
   const buyerFilter = opensea.filters.OrdersMatched(null, null, null, wallet)
-  const hasBuyEvents = await filterOSEvents(opensea, buyerFilter);
+  const hasBuyEvents = await filterOSEvents(opensea, buyerFilter, true);
 
   if (hasBuyEvents) {
-    console.log(`${wallet} has buys`);
     return;
   }
 
@@ -200,11 +221,11 @@ const _parseOpenSeaTx = async (event, opensea) => {
 // }
 
 main()
-  .then(text => {
-    process.exit(0);
-  })
-  .catch(err => {
-    console.error(err);
-    process.exit(1);
-  });
+  // .then(text => {
+  //   process.exit(0);
+  // })
+  // .catch(err => {
+  //   console.error(err);
+  //   process.exit(1);
+  // });
 
