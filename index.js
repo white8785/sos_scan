@@ -36,12 +36,13 @@ const csvWriterAll = createCsvWriter({
   append: true,
 })
 
+
 const main = async () => {
   const provider = new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI);
   const contract = getSOSContract(provider);
 
   const endBlock = await provider.getBlockNumber();
-  const interval = 500;
+  const interval = 100;
 
   let tasks = [];
   let counter = 0;
@@ -52,7 +53,7 @@ const main = async () => {
     tasks.push(task);
 
     counter += 1;
-    if ((counter % 10) == 0) {
+    if ((counter % 5) == 0) {
       await Promise.all(tasks);
       tasks = [];
     }
