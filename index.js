@@ -1,7 +1,7 @@
 require('dotenv').config();
 
 const { ethers } = require("ethers");
-const { formatEther } = require("ethers/lib/utils");
+const { formatEther, parseEther } = require("ethers/lib/utils");
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 
 const SOS_ABI = require("./abi/OpenDAO.json");
@@ -10,6 +10,7 @@ const OPENSEA_ABI = require("./abi/OpenSea.json");
 const OPENSEA_ADDRESS = "0x7Be8076f4EA4A4AD08075C2508e481d6C946D12b";
 const SOS_START_BLOCK = 13860522;
 const OPENSEA_START_BLOCK = 5774644;
+const SNAPSHOT_BLOCK = 13858107;
 
 const csvWriterBad = createCsvWriter({
   path: "sos_bad_claims.csv",
@@ -39,11 +40,10 @@ const main = async () => {
   const provider = new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI);
   const contract = getSOSContract(provider);
 
-  // const endBlock = await provider.getBlockNumber();
-  const endBlock = SOS_START_BLOCK + 5550;
-  const interval = 5000;
+  const endBlock = await provider.getBlockNumber();
+  const interval = 2000;
 
-  for (let i = SOS_START_BLOCK; i < endBlock; i += interval) {
+  for (let i = SOS_START_BLOCK + 1; i < endBlock; i += interval) {
     const _endBlock = Math.min(endBlock, i + interval);
     console.log(`------ Scanning Block ${i} to ${_endBlock} ----------`);
     const claims = await getClaims(contract, i, _endBlock);
@@ -66,14 +66,14 @@ const getClaims = async (contract, startBlock, endBlock) => {
 const filterOSEvents = async (opensea, filter) => {
   const interval = 2000;
   let allEvents = []
-  for (let i = SOS_START_BLOCK; i > OPENSEA_START_BLOCK; i -= interval) {
-    const startBlock = Math.max(i, OPENSEA_START_BLOCK);
-    const endBlock = i + interval;
+  for (let i = OPENSEA_START_BLOCK; i < SNAPSHOT_BLOCK; i += interval) {
+    const startBlock = i;
+    const endBlock = Math.min(i + interval, SNAPSHOT_BLOCK);
     const events = await opensea.queryFilter(filter, startBlock, endBlock);
     allEvents = [...allEvents, events];
   }
 
-  return allEvents;
+  return events;
 }
 
 const parseOpenseaTx = async (provider, claimEvents) => {
@@ -83,6 +83,8 @@ const parseOpenseaTx = async (provider, claimEvents) => {
 
   for (const event of claimEvents) {
     const wallet = event.args.to;
+    const amountClaimed = formatEther(event.args.value);
+
     const buyerFilter = opensea.filters.OrdersMatched(null, null, null, wallet)
     const buyEvents = await filterOSEvents(opensea, buyerFilter);
 
@@ -90,34 +92,43 @@ const parseOpenseaTx = async (provider, claimEvents) => {
     const sellEvents = await filterOSEvents(opensea, sellerFilter);
     if (buyEvents.length == 0 && sellEvents.length == 0) {
       console.log(`!!!!!!!!!!!!!!!!!!!!!!!!!!! No OS transaction ${wallet} !!!!!!!!!!!!!!!!!!!!!!`);
-      const amountClaimed = formatEther(event.args.value);
-      badData.append({
+      badData.push({
         wallet: wallet,
         claimed: amountClaimed,
         txHash: event.transactionHash,
       });
     } else {
-      for (const event in buyEvents) {
-        console.log(event);
+      let totalEthBuy = parseEther("0");
+      let totalEthSell = parseEther("0");
+      for (const event of buyEvents) {
+        totalEthBuy = totalEthBuy.add(event.args.price)
+      };
+      for (const event of sellEvents) {
+        totalEthSell = totalEthSell.add(event.args.price)
+      };
 
-      };
-      for (const event in sellEvents) {
-        console.log(event);
-      };
+      allData.push({
+        wallet,
+        claimed: amountClaimed,
+        txHash: event.transactionHash,
+        numberBuy: buyEvents.length,
+        totalETHBuy: formatEther(totalEthBuy),
+        numberSell: sellEvents.length,
+        totalETHSell: formatEther(totalEthSell),
+      })
     };
   };
 
   if (badData) {
-    csvWriterBad.writeRecords(maliciousData);
+    await csvWriterBad.writeRecords(badData);
   };
   if (allData) {
-    csvWriterAll.writeRecords(allData);
+    await csvWriterAll.writeRecords(allData);
   };
 }
 
 main()
   .then(text => {
-    console.log(text);
     process.exit(0);
   })
   .catch(err => {
