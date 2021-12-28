@@ -38,30 +38,29 @@ const csvWriterAll = createCsvWriter({
 
 
 const main = async () => {
-  let providers = [
-    new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI),
-    new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI),
-    new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI),
-  ]
-  const contract = getSOSContract(providers[0]);
+  const provider = new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI);
+  const contract = getSOSContract(provider);
+  const opensea = new ethers.Contract(OPENSEA_ADDRESS, OPENSEA_ABI, provider);
 
-  const endBlock = await providers[0].getBlockNumber();
-  const interval = 100;
+  const endBlock = await provider.getBlockNumber();
+  // const endBlock = SOS_START_BLOCK + 2080;
+  const interval = 1000;
 
-  let tasks = [];
-  let counter = 0;
+  let allTasks = [];
 
-  for (let i = SOS_START_BLOCK; i < endBlock; i += interval) {
+  for (let i = SOS_START_BLOCK - 1; i < endBlock; i += interval) {
     const _endBlock = Math.min(endBlock, i + interval);
-    const task = parseClaims(providers[counter % 5], contract, i + 1, _endBlock);
-    tasks.push(task);
-
-    counter += 1;
-    if ((counter % 3) == 0) {
-      await Promise.all(tasks);
-      tasks = [];
-    }
+    const task = parseClaims(opensea, contract, i + 1, _endBlock);
+    allTasks.push(task);
   }
+
+  await Promise.all(allTasks);
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => {
+        setTimeout(resolve, ms);
+    });
 }
 
 const getSOSContract = (provider) => {
@@ -69,12 +68,13 @@ const getSOSContract = (provider) => {
   return contract;
 }
 
-const parseClaims = async (provider, contract, startBlock, endBlock) => {
+const parseClaims = async (opensea, contract, startBlock, endBlock) => {
   console.log(`------ Scanning Block ${startBlock} to ${endBlock} ----------`);
   const filter = contract.filters.Transfer(ethers.constants.AddressZero);
   const claimEvents = await contract.queryFilter(filter, startBlock, endBlock);
   console.log(`Found ${claimEvents.length} claims`);
-  await parseOpenseaTx(provider, claimEvents);
+  await parseOpenseaTx(opensea, claimEvents);
+  console.log(`------ Done Block ${startBlock} to ${endBlock} ----------`);
 }
 
 // const filterOSEvents = async (opensea, filter) => {
@@ -95,10 +95,9 @@ const parseClaims = async (provider, contract, startBlock, endBlock) => {
 
 const filterOSEvents = async (opensea, filter) => {
   const interval = 10000;
-  let allEvents = []
-  for (let i = OPENSEA_START_BLOCK; i < SNAPSHOT_BLOCK; i += interval) {
-    const startBlock = i;
-    const endBlock = Math.min(i + interval, SNAPSHOT_BLOCK);
+  for (let i = SNAPSHOT_BLOCK; i > OPENSEA_START_BLOCK; i -= interval) {
+    const startBlock = Math.max(OPENSEA_START_BLOCK, i - interval);
+    const endBlock = i;
     const events = await opensea.queryFilter(filter, startBlock, endBlock);
     if (events.length > 0) {
       return true;
@@ -107,32 +106,44 @@ const filterOSEvents = async (opensea, filter) => {
   return false;
 }
 
-const parseOpenseaTx = async (provider, claimEvents) => {
-  const opensea = new ethers.Contract(OPENSEA_ADDRESS, OPENSEA_ABI, provider);
-  let badData = []
+const parseOpenseaTx = async (opensea, claimEvents) => {
+  let allTasks = []
 
   for (const event of claimEvents) {
-    const wallet = event.args.to;
-    const amountClaimed = formatEther(event.args.value);
-
-    const buyerFilter = opensea.filters.OrdersMatched(null, null, null, wallet)
-    const hasBuyEvents = await filterOSEvents(opensea, buyerFilter);
-
-    const sellerFilter = opensea.filters.OrdersMatched(null, null, wallet)
-    const hasSellEvents = await filterOSEvents(opensea, sellerFilter);
-    if (!hasBuyEvents && !hasSellEvents) {
-      badData.push({
-        wallet: wallet,
-        claimed: amountClaimed,
-        txHash: event.transactionHash,
-      });
-    };
+    const task = _parseOpenSeaTx(event, opensea);
+    allTasks.push(task);
   };
 
-  if (badData.length > 0) {
-    console.log(`Writing ${badData.length} bad data rows`);
-    await csvWriterBad.writeRecords(badData);
-  };
+  await Promise.all(allTasks);
+}
+
+const _parseOpenSeaTx = async (event, opensea) => {
+  const wallet = event.args.to;
+  console.log(`Scanning OS events for ${wallet}`)
+  const amountClaimed = formatEther(event.args.value);
+
+  const sellerFilter = opensea.filters.OrdersMatched(null, null, wallet)
+  const hasSellEvents = await filterOSEvents(opensea, sellerFilter);
+
+  if (hasSellEvents) {
+    console.log(`${wallet} has sell`);
+    return;
+  }
+
+  const buyerFilter = opensea.filters.OrdersMatched(null, null, null, wallet)
+  const hasBuyEvents = await filterOSEvents(opensea, buyerFilter);
+
+  if (hasBuyEvents) {
+    console.log(`${wallet} has buys`);
+    return;
+  }
+
+  console.log(`!!!!!!!!!!!!!!!!!!!!!!!!!!! No OS transaction ${wallet} !!!!!!!!!!!!!!!!!!!!!!`);
+  await csvWriterBad.writeRecords([{
+    wallet: wallet,
+    claimed: amountClaimed,
+    txHash: event.transactionHash,
+  }]);
 }
 
 // const parseOpenseaTx = async (provider, claimEvents) => {
