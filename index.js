@@ -136,9 +136,11 @@ const parseOpenseaTx = async (provider, claimEvents) => {
   };
 
   if (badData.length > 0) {
+    console.log(`Writing ${badData.length} bad data rows`);
     await csvWriterBad.writeRecords(badData);
   };
   if (allData.length > 0) {
+    console.log(`Writing ${allData.length} all data rows`);
     await csvWriterAll.writeRecords(allData);
   };
 }
