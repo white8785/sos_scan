@@ -38,18 +38,24 @@ const csvWriterAll = createCsvWriter({
 
 
 const main = async () => {
-  const provider = new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI);
-  const contract = getSOSContract(provider);
+  let providers = [
+    new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI),
+    new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI),
+    new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI),
+    new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI),
+    new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI),
+  ]
+  const contract = getSOSContract(providers[0]);
 
-  const endBlock = await provider.getBlockNumber();
-  const interval = 100;
+  const endBlock = await providers[0].getBlockNumber();
+  const interval = 10;
 
   let tasks = [];
   let counter = 0;
 
   for (let i = SOS_START_BLOCK; i < endBlock; i += interval) {
     const _endBlock = Math.min(endBlock, i + interval);
-    const task = parseClaims(provider, contract, i + 1, _endBlock);
+    const task = parseClaims(providers[counter % 5], contract, i + 1, _endBlock);
     tasks.push(task);
 
     counter += 1;
