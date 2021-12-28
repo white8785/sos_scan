@@ -64,16 +64,23 @@ const getClaims = async (contract, startBlock, endBlock) => {
 }
 
 const filterOSEvents = async (opensea, filter) => {
-  const interval = 2000;
-  let allEvents = []
-  for (let i = OPENSEA_START_BLOCK; i < SNAPSHOT_BLOCK; i += interval) {
-    const startBlock = i;
-    const endBlock = Math.min(i + interval, SNAPSHOT_BLOCK);
-    const events = await opensea.queryFilter(filter, startBlock, endBlock);
-    allEvents = [...allEvents, events];
+  try {
+    const events = await opensea.queryFilter(filter, null, SNAPSHOT_BLOCK);
+    return events;
+  } catch(error) {
+    const interval = 2000;
+    let allEvents = []
+    for (let i = OPENSEA_START_BLOCK; i < SNAPSHOT_BLOCK; i += interval) {
+      const startBlock = i;
+      const endBlock = Math.min(i + interval, SNAPSHOT_BLOCK);
+      const events = await opensea.queryFilter(filter, startBlock, endBlock);
+      if (events) {
+        allEvents = [...allEvents, events];
+      }
+      return events;
+    }
   }
 
-  return events;
 }
 
 const parseOpenseaTx = async (provider, claimEvents) => {
