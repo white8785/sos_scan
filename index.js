@@ -43,11 +43,10 @@ const main = async () => {
   const opensea = new ethers.Contract(OPENSEA_ADDRESS, OPENSEA_ABI, provider);
 
   const endBlock = await provider.getBlockNumber();
-  const interval = 1000;
+  const interval = 100;
 
-  let allTasks = [];
 
-  for (let i = SOS_START_BLOCK; i < endBlock; i += interval) {
+  for (let i = 13868476; i < endBlock; i += interval) {
     const _endBlock = Math.min(endBlock, i + interval);
     await parseClaims(opensea, contract, i + 1, _endBlock);
     // const task = parseClaims;
@@ -138,6 +137,7 @@ const _parseOpenSeaTx = async (event, opensea, startBlock) => {
   const hasBuyEvents = await filterOSEvents(opensea, buyerFilter, true);
 
   if (hasBuyEvents) {
+    console.log(`[${startBlock}] ${wallet} has sell`)
     return;
   }
 
