@@ -15,9 +15,9 @@ const SNAPSHOT_BLOCK = 13858107;
 const csvWriterBad = createCsvWriter({
   path: "sos_bad_claims.csv",
   header: [
-    {id: "wallet", title: "Wallet"},
-    {id: "claimed", title: "Claimed"},
-    {id: "txHash", title: "Tx Hash"},
+    { id: "wallet", title: "Wallet" },
+    { id: "claimed", title: "Claimed" },
+    { id: "txHash", title: "Tx Hash" },
   ],
   append: true,
 })
@@ -25,20 +25,32 @@ const csvWriterBad = createCsvWriter({
 const csvWriterAll = createCsvWriter({
   path: "sos_all_claims.csv",
   header: [
-    {id: "wallet", title: "Wallet"},
-    {id: "claimed", title: "Claimed"},
-    {id: "txHash", title: "Tx Hash"},
-    {id: "numberBuy", title: "# OS Purchases"},
-    {id: "totalETHBuy", title: "Total ETH (Purchase)"},
-    {id: "numberSell", title: "# OS Sales"},
-    {id: "totalETHSell", title: "Total ETH (Sales)"},
+    { id: "wallet", title: "Wallet" },
+    { id: "claimed", title: "Claimed" },
+    { id: "txHash", title: "Tx Hash" },
+    { id: "numberBuy", title: "# OS Purchases" },
+    { id: "totalETHBuy", title: "Total ETH (Purchase)" },
+    { id: "numberSell", title: "# OS Sales" },
+    { id: "totalETHSell", title: "Total ETH (Sales)" },
   ],
   append: true,
 })
 
+// Use the mainnet
+const network = "homestead";
+
+// Specify your own API keys
+// Each is optional, and if you omit it the default
+// API key for that service will be used.
+const provider = ethers.getDefaultProvider(network, {
+  infura: {
+    projectId: process.env.INFUSION_PROJECT_ID,
+    projectSecret: process.env.SECRET,
+  },
+});
+
 
 const main = async () => {
-  const provider = new ethers.providers.WebSocketProvider(process.env.WS_NODE_URI);
   const contract = getSOSContract(provider);
   const opensea = new ethers.Contract(OPENSEA_ADDRESS, OPENSEA_ABI, provider);
 
@@ -106,10 +118,10 @@ const filterOSEvents = async (opensea, filter, full) => {
 
 const parseOpenseaTx = async (opensea, claimEvents, startBlock) => {
   for (const event of claimEvents) {
-    const task =  _parseOpenSeaTx;
+    const task = _parseOpenSeaTx;
     const doTask = () => {
       task(event, opensea, startBlock)
-        .then(() => {})
+        .then(() => { })
         .catch(async (error) => {
           console.log("parseOpenseaTx error occured:", error)
           await sleep(Math.random() * 3000)
